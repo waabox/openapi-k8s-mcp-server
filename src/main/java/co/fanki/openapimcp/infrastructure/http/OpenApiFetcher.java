@@ -12,6 +12,7 @@ import reactor.util.retry.Retry;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.Semaphore;
 
 /**
  * HTTP client for fetching OpenAPI specifications from services.
@@ -26,6 +27,7 @@ public class OpenApiFetcher {
     private static final Logger LOG = LoggerFactory.getLogger(OpenApiFetcher.class);
 
     private final WebClient webClient;
+    private final Semaphore rateLimiter;
 
     @Value("${openapi.fetch.timeout-seconds:30}")
     private int timeoutSeconds;
@@ -37,13 +39,18 @@ public class OpenApiFetcher {
      * Creates a new OpenApiFetcher.
      *
      * @param webClientBuilder the WebClient builder
+     * @param maxConcurrentRequests maximum number of concurrent requests
      */
-    public OpenApiFetcher(final WebClient.Builder webClientBuilder) {
+    public OpenApiFetcher(
+            final WebClient.Builder webClientBuilder,
+            @Value("${openapi.fetch.max-concurrent-requests:10}") final int maxConcurrentRequests) {
         this.webClient = Objects.requireNonNull(webClientBuilder)
             .codecs(configurer -> configurer
                 .defaultCodecs()
                 .maxInMemorySize(10 * 1024 * 1024)) // 10MB max
             .build();
+        this.rateLimiter = new Semaphore(maxConcurrentRequests > 0 ? maxConcurrentRequests : 10);
+        LOG.info("OpenApiFetcher initialized with max {} concurrent requests", maxConcurrentRequests);
     }
 
     /**
@@ -56,6 +63,14 @@ public class OpenApiFetcher {
         Objects.requireNonNull(url, "url cannot be null");
 
         LOG.debug("Fetching OpenAPI spec from: {}", url);
+
+        try {
+            rateLimiter.acquire();
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LOG.warn("Interrupted while waiting for rate limiter: {}", url);
+            return Optional.empty();
+        }
 
         try {
             final String response = webClient.get()
@@ -90,6 +105,8 @@ public class OpenApiFetcher {
         } catch (final Exception e) {
             LOG.error("Exception fetching OpenAPI from {}: {}", url, e.getMessage());
             return Optional.empty();
+        } finally {
+            rateLimiter.release();
         }
     }
 

@@ -8,6 +8,8 @@ import co.fanki.openapimcp.domain.model.OpenApiSpecification;
 import co.fanki.openapimcp.domain.model.ServiceId;
 import co.fanki.openapimcp.domain.repository.DiscoveredServiceRepository;
 import co.fanki.openapimcp.domain.service.OpenApiParser;
+import co.fanki.openapimcp.domain.service.OpenApiUrlResolver;
+import co.fanki.openapimcp.domain.service.ServiceBackoffTracker;
 import co.fanki.openapimcp.infrastructure.http.OpenApiFetcher;
 import co.fanki.openapimcp.infrastructure.kubernetes.KubernetesServiceDiscovery;
 import org.slf4j.Logger;
@@ -38,6 +40,8 @@ public class OpenApiRefreshApplicationService {
     private final OpenApiFetcher openApiFetcher;
     private final OpenApiParser openApiParser;
     private final DiscoveredServiceRepository serviceRepository;
+    private final OpenApiUrlResolver urlResolver;
+    private final ServiceBackoffTracker backoffTracker;
 
     /**
      * Creates a new OpenApiRefreshApplicationService.
@@ -46,16 +50,22 @@ public class OpenApiRefreshApplicationService {
      * @param openApiFetcher the OpenAPI fetcher
      * @param openApiParser the OpenAPI parser
      * @param serviceRepository the service repository
+     * @param urlResolver the OpenAPI URL resolver
+     * @param backoffTracker the service backoff tracker
      */
     public OpenApiRefreshApplicationService(
             final KubernetesServiceDiscovery kubernetesDiscovery,
             final OpenApiFetcher openApiFetcher,
             final OpenApiParser openApiParser,
-            final DiscoveredServiceRepository serviceRepository) {
+            final DiscoveredServiceRepository serviceRepository,
+            final OpenApiUrlResolver urlResolver,
+            final ServiceBackoffTracker backoffTracker) {
         this.kubernetesDiscovery = Objects.requireNonNull(kubernetesDiscovery);
         this.openApiFetcher = Objects.requireNonNull(openApiFetcher);
         this.openApiParser = Objects.requireNonNull(openApiParser);
         this.serviceRepository = Objects.requireNonNull(serviceRepository);
+        this.urlResolver = Objects.requireNonNull(urlResolver);
+        this.backoffTracker = Objects.requireNonNull(backoffTracker);
     }
 
     /**
@@ -77,6 +87,7 @@ public class OpenApiRefreshApplicationService {
         int created = 0;
         int updated = 0;
         int failed = 0;
+        int skipped = 0;
         final List<ServiceId> processedIds = new ArrayList<>();
 
         for (final var k8sService : k8sServices) {
@@ -90,15 +101,23 @@ public class OpenApiRefreshApplicationService {
             );
             processedIds.add(serviceId);
 
+            // Skip services in backoff
+            if (backoffTracker.shouldSkip(serviceId)) {
+                skipped++;
+                continue;
+            }
+
             try {
-                final boolean isNew = processService(k8sService);
+                final boolean isNew = processService(k8sService, serviceId);
                 if (isNew) {
                     created++;
                 } else {
                     updated++;
                 }
+                backoffTracker.recordSuccess(serviceId);
             } catch (final Exception e) {
                 LOG.error("Failed to process service {}: {}", serviceId, e.getMessage());
+                backoffTracker.recordFailure(serviceId);
                 failed++;
             }
         }
@@ -109,7 +128,7 @@ public class OpenApiRefreshApplicationService {
         }
 
         final RefreshResult result = new RefreshResult(
-            created, updated, failed, processedIds.size()
+            created, updated, failed, skipped, processedIds.size()
         );
 
         LOG.info("Refresh completed: {}", result);
@@ -117,12 +136,8 @@ public class OpenApiRefreshApplicationService {
     }
 
     private boolean processService(
-            final KubernetesServiceDiscovery.DiscoveredK8sService k8sService) {
-
-        final ServiceId serviceId = ServiceId.of(
-            k8sService.namespace(),
-            k8sService.name()
-        );
+            final KubernetesServiceDiscovery.DiscoveredK8sService k8sService,
+            final ServiceId serviceId) {
 
         final ClusterAddress address = ClusterAddress.of(
             k8sService.clusterIp(),
@@ -139,7 +154,7 @@ public class OpenApiRefreshApplicationService {
         );
 
         // Fetch OpenAPI specification
-        final String openApiUrl = address.toUrl(openApiPath.value());
+        final String openApiUrl = urlResolver.resolve(service);
         LOG.debug("Fetching OpenAPI from: {}", openApiUrl);
 
         final Optional<String> specJsonOpt = openApiFetcher.fetch(openApiUrl);
@@ -147,6 +162,7 @@ public class OpenApiRefreshApplicationService {
         if (specJsonOpt.isEmpty()) {
             LOG.warn("No OpenAPI spec found for service: {}", serviceId);
             service.markNoOpenApi();
+            backoffTracker.recordFailure(serviceId);
         } else {
             try {
                 final OpenApiSpecification spec = openApiParser.parse(specJsonOpt.get());
@@ -180,7 +196,7 @@ public class OpenApiRefreshApplicationService {
         }
 
         final DiscoveredService service = serviceOpt.get();
-        final String openApiUrl = service.openApiUrl();
+        final String openApiUrl = urlResolver.resolve(service);
 
         LOG.debug("Refreshing single service {} from: {}", serviceId, openApiUrl);
 
@@ -211,15 +227,16 @@ public class OpenApiRefreshApplicationService {
      * @param created number of new services created
      * @param updated number of services updated
      * @param failed number of services that failed to process
+     * @param skipped number of services skipped due to backoff
      * @param total total number of services processed
      */
-    public record RefreshResult(int created, int updated, int failed, int total) {
+    public record RefreshResult(int created, int updated, int failed, int skipped, int total) {
 
         @Override
         public String toString() {
             return String.format(
-                "RefreshResult{total=%d, created=%d, updated=%d, failed=%d}",
-                total, created, updated, failed
+                "RefreshResult{total=%d, created=%d, updated=%d, failed=%d, skipped=%d}",
+                total, created, updated, failed, skipped
             );
         }
     }

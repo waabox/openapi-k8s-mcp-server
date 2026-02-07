@@ -88,7 +88,7 @@ public class RefreshScheduler {
 
         if (!running.compareAndSet(false, true)) {
             LOG.warn("Refresh already in progress, skipping");
-            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 0, 0);
+            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 0, 0, 0);
         }
 
         try {
@@ -101,14 +101,14 @@ public class RefreshScheduler {
     private OpenApiRefreshApplicationService.RefreshResult executeRefresh() {
         if (!running.compareAndSet(false, true)) {
             LOG.warn("Refresh already in progress, skipping");
-            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 0, 0);
+            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 0, 0, 0);
         }
 
         try {
             return refreshService.refresh(RefreshServicesCommand.all());
         } catch (final Exception e) {
             LOG.error("Refresh failed: {}", e.getMessage(), e);
-            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 1, 0);
+            return new OpenApiRefreshApplicationService.RefreshResult(0, 0, 1, 0, 0);
         } finally {
             running.set(false);
         }

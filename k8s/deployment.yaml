@@ -23,7 +23,7 @@ spec:
 
       containers:
         - name: openapi-mcp-server
-          image: fanki/openapi-mcp-server:latest
+          image: your-registry/openapi-mcp-server:latest  # Replace with your image
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -34,8 +34,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: openapi-mcp-server-config
-            - secretRef:
-                name: openapi-mcp-server-secret
 
           resources:
             requests:
@@ -47,7 +45,7 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: /actuator/health/liveness
+              path: /health
               port: http
             initialDelaySeconds: 60
             periodSeconds: 30
@@ -56,7 +54,7 @@ spec:
 
           readinessProbe:
             httpGet:
-              path: /actuator/health/readiness
+              path: /health
               port: http
             initialDelaySeconds: 30
             periodSeconds: 10
