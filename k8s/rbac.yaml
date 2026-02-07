@@ -1,0 +1,49 @@
+# RBAC configuration for OpenAPI MCP Server
+# Allows the server to list and watch services in all namespaces
+# @author waabox(emiliano[at]fanki[dot]co)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openapi-mcp-server
+  namespace: openapi-mcp
+  labels:
+    app.kubernetes.io/name: openapi-mcp-server
+    app.kubernetes.io/component: rbac
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openapi-mcp-server
+  labels:
+    app.kubernetes.io/name: openapi-mcp-server
+    app.kubernetes.io/component: rbac
+rules:
+  # Allow listing and watching services in all namespaces
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  # Allow listing namespaces (for filtering)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  # Allow reading endpoints (for service discovery)
+  - apiGroups: [""]
+    resources: ["endpoints"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openapi-mcp-server
+  labels:
+    app.kubernetes.io/name: openapi-mcp-server
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openapi-mcp-server
+subjects:
+  - kind: ServiceAccount
+    name: openapi-mcp-server
+    namespace: openapi-mcp

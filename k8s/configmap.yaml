@@ -1,0 +1,27 @@
+# ConfigMap for OpenAPI MCP Server
+# @author waabox(emiliano[at]fanki[dot]co)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openapi-mcp-server-config
+  namespace: openapi-mcp
+  labels:
+    app.kubernetes.io/name: openapi-mcp-server
+    app.kubernetes.io/component: config
+data:
+  # Kubernetes configuration
+  K8S_IN_CLUSTER: "true"
+  K8S_NAMESPACE_FILTER: ""  # Empty = all namespaces
+
+  # OpenAPI configuration
+  OPENAPI_PATH: "/v3/api-docs"
+  OPENAPI_FETCH_TIMEOUT: "30"
+  OPENAPI_FETCH_RETRIES: "3"
+
+  # Scheduler configuration
+  SCHEDULER_ENABLED: "true"
+  SCHEDULER_INTERVAL_MS: "600000"  # 10 minutes
+
+  # Logging
+  LOG_LEVEL: "INFO"
+  SHOW_SQL: "false"

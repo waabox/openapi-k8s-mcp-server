@@ -1,0 +1,9 @@
+# Kubernetes Namespace for OpenAPI MCP Server
+# @author waabox(emiliano[at]fanki[dot]co)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openapi-mcp
+  labels:
+    app.kubernetes.io/name: openapi-mcp-server
+    app.kubernetes.io/component: namespace
