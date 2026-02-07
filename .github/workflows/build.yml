@@ -22,10 +22,10 @@ jobs:
           cache: 'maven'
 
       - name: Compile
-        run: mvn compile -B --enable-preview
+        run: mvn compile -B
 
       - name: Run unit tests
-        run: mvn test -B --enable-preview
+        run: mvn test -B
 
   integration-test:
     runs-on: ubuntu-latest
@@ -43,4 +43,4 @@ jobs:
           cache: 'maven'
 
       - name: Run integration tests
-        run: mvn verify -B -Dintegration-test --enable-preview
+        run: mvn verify -B -Dintegration-test
