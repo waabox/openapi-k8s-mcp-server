@@ -37,6 +37,9 @@ RUN addgroup -g 1001 appgroup && \
 # Copy the built JAR from builder stage
 COPY --from=builder /app/target/openapi-mcp-server-*.jar app.jar
 
+# Create the data directory for embedded Derby
+RUN mkdir -p /app/data
+
 # Set ownership
 RUN chown -R appuser:appgroup /app
 
@@ -54,6 +57,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:MaxRAMPercentage=75.0 \
     -XX:InitialRAMPercentage=50.0 \
+    --enable-preview \
     -Djava.security.egd=file:/dev/./urandom"
 
 # Run the application
