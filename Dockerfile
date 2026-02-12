@@ -4,12 +4,9 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM amazoncorretto:21-alpine AS builder
+FROM maven:3-amazoncorretto-21 AS builder
 
 WORKDIR /app
-
-# Install Maven
-RUN apk add --no-cache maven
 
 # Copy pom.xml first for dependency caching
 COPY pom.xml .
@@ -26,22 +23,22 @@ RUN mvn package -DskipTests -B
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM amazoncorretto:21-alpine
+FROM amazoncorretto:21
 
 WORKDIR /app
 
 # Create non-root user
-RUN addgroup -g 1001 appgroup && \
-    adduser -u 1001 -G appgroup -D appuser
+RUN yum install -y procps-ng shadow-utils && \
+    groupadd -g 1000 appgroup && \
+    useradd -u 1000 -g appgroup -m appuser && \
+    yum clean all
 
 # Copy the built JAR from builder stage
 COPY --from=builder /app/target/openapi-mcp-server-*.jar app.jar
 
 # Create the data directory for embedded Derby
-RUN mkdir -p /app/data
-
-# Set ownership
-RUN chown -R appuser:appgroup /app
+RUN mkdir -p /app/data && \
+    chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
@@ -59,6 +56,8 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
     -XX:InitialRAMPercentage=50.0 \
     --enable-preview \
     -Djava.security.egd=file:/dev/./urandom"
+
+ENV DERBY_DB_PATH=/app/data/openapi_mcp
 
 # Run the application
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
